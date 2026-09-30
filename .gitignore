@@ -7,18 +7,16 @@
 .venv/
 venv/
 env/
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
-
 # Runtime artifacts
 last_frame.txt
 *.log
-
 # OS
 .DS_Store
 Thumbs.db
+last_frame.*
