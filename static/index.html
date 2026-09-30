@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>MEIND - Live Vision Stream</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", monospace; background: #0b0f14;
+         color: #cdd6e0; overflow: hidden; }
+  .bar { height: 44px; padding: 0 14px; background: #121821;
+         border-bottom: 1px solid #1e2731; display: flex; gap: 12px;
+         align-items: center; flex-wrap: nowrap; font-size: 12px; }
+  .bar .brand { font-weight: 700; color: #6ee7b7; letter-spacing: 1px;
+                font-size: 13px; margin-right: 6px; }
+  .bar label { color: #8a97a5; display: inline-flex; align-items: center; gap: 6px; }
+  .bar input[type=range] { width: 110px; }
+  .bar button { padding: 6px 12px; background: #1f6feb; color: #fff; border: 0;
+                cursor: pointer; border-radius: 5px; font-size: 12px;
+                font-family: inherit; font-weight: 600; }
+  .bar button:hover { background: #388bfd; }
+  .bar button.preset { background: #1a2330; color: #8a97a5; padding: 4px 8px;
+                       font-size: 11px; font-weight: 500; }
+  .bar button.preset:hover { background: #253040; color: #cdd6e0; }
+  .bar button.stop { background: #6e2424; }
+  .bar button.stop:hover { background: #8a2f2f; }
+  .bar button.snap { background: #7c3aed; padding: 6px 16px; font-size: 13px; }
+  .bar button.snap:hover { background: #8b5cf6; }
+  .bar button.snap:disabled { background: #2a2a3a; color: #555; cursor: not-allowed; }
+  .bar .spacer { flex: 1; }
+  .badge { padding: 3px 9px; border-radius: 12px; font-size: 11px;
+           font-weight: 600; letter-spacing: 0.3px; }
+  .badge.live { background: #1c3a2a; color: #6ee7b7; }
+  .badge.idle { background: #1a2330; color: #8a97a5; }
+  .badge.err  { background: #3a1c1c; color: #fca5a5; }
+  #countdown { color: #6ee7b7; font-weight: 600; }
+  #sid { color: #4a5768; font-size: 11px; }
+  .grid { display: grid; grid-template-columns: 52% 24% 24%;
+          height: calc(100vh - 44px); }
+  .col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .col.mid { border-left: 1px solid #1e2731; border-right: 1px solid #1e2731; }
+  .panel { display: flex; flex-direction: column; min-height: 0; flex: 1;
+           border-bottom: 1px solid #1e2731; }
+  .panel:last-child { border-bottom: 0; }
+  .panel-head { padding: 8px 12px; font-size: 10px; letter-spacing: 1.2px;
+                text-transform: uppercase; color: #6b7688; background: #101620;
+                border-bottom: 1px solid #1e2731; display: flex;
+                align-items: center; gap: 6px; }
+  .panel-head .dot { width: 6px; height: 6px; border-radius: 50%;
+                     background: #4a5768; }
+  .panel-head .dot.active { background: #6ee7b7; box-shadow: 0 0 6px #6ee7b7; }
+  .panel-body { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; }
+  #scene { flex: 1; background: #000; position: relative; }
+  #scene canvas { display: block; width: 100%; height: 100%; }
+  #eyeCanvas { image-rendering: pixelated; width: 100%; background: #000;
+               border: 1px solid #1e2731; border-radius: 4px; }
+  #stream { font-family: "Cascadia Mono", Consolas, monospace;
+            font-size: 11px; line-height: 1.5; }
+  .line { padding: 3px 0; border-bottom: 1px solid #121821; }
+  .line:last-child { border-bottom: 0; }
+  .line .t { color: #4a5768; }
+  .line .k { font-weight: 700; }
+  .line.small .k { color: #6ee7b7; }
+  .line.medium .k { color: #fbbf24; }
+  .line.large .k { color: #f87171; }
+  .line.full .k { color: #60a5fa; }
+  .line.skip { color: #3d4757; font-style: italic; }
+  .line .desc { color: #6b7688; }
+  #bubble-col .panel-body { padding: 14px; background: #0d1218; }
+  .bubble { background: #16202b; border: 1px solid #253040; border-radius: 12px;
+            padding: 14px 16px; font-size: 13px; line-height: 1.55;
+            color: #cfd9e4; position: relative; min-height: 80px;
+            white-space: pre-wrap; word-wrap: break-word; }
+  .bubble.thinking { color: #6ee7b7; font-style: italic; }
+  .bubble .meta { display: block; margin-top: 10px; padding-top: 8px;
+                  border-top: 1px dashed #253040; font-size: 10px;
+                  color: #4a5768; letter-spacing: 0.4px; }
+  .bubble .avatar { position: absolute; top: -12px; left: 14px; width: 24px;
+                    height: 24px; border-radius: 50%;
+                    background: linear-gradient(135deg, #6ee7b7, #3b82f6);
+                    border: 2px solid #0b0f14; display: flex;
+                    align-items: center; justify-content: center;
+                    font-size: 12px; color: #0b0f14; font-weight: 700; }
+  .stats { display: flex; gap: 14px; padding: 8px 12px; background: #101620;
+           border-top: 1px solid #1e2731; font-size: 10px; color: #6b7688;
+           letter-spacing: 0.5px; }
+  .stats b { color: #cdd6e0; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <span class="brand">MEIND</span>
+  <label>Preset:
+    <button class="preset" data-w="128" data-h="72">128x72</button>
+    <button class="preset" data-w="192" data-h="108">192x108</button>
+    <button class="preset" data-w="256" data-h="144">256x144</button>
+  </label>
+  <label>W <input id="gw" type="range" min="32" max="426" value="192">
+    <span id="gwv" style="color:#cdd6e0">192</span></label>
+  <label>H <input id="gh" type="range" min="16" max="240" value="108">
+    <span id="ghv" style="color:#cdd6e0">108</span></label>
+  <button id="start">Start</button>
+  <button id="snap" class="snap" disabled>Send Snapshot</button>
+  <button id="stop" class="stop">Stop</button>
+  <span class="badge idle" id="status">idle</span>
+  <span id="countdown"></span>
+  <span class="spacer"></span>
+  <span id="sid"></span>
+</div>
+
+<div class="grid">
+  <div class="col">
+    <div class="panel" style="flex:1">
+      <div class="panel-head"><span class="dot active"></span> THE WORLD (agent 3D view)</div>
+      <div id="scene"></div>
+    </div>
+  </div>
+
+  <div class="col mid">
+    <div class="panel" style="flex: 0 0 auto;">
+      <div class="panel-head"><span class="dot"></span> WHAT MEIND SEES</div>
+      <div class="panel-body">
+        <canvas id="eyeCanvas" width="192" height="108"></canvas>
+      </div>
+    </div>
+    <div class="panel" style="flex:1">
+      <div class="panel-head"><span class="dot active"></span> DELTA STREAM</div>
+      <div class="panel-body" id="stream">
+        <div class="line skip">waiting for session...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col" id="bubble-col">
+    <div class="panel" style="flex:1">
+      <div class="panel-head"><span class="dot active"></span> MEIND THOUGHT</div>
+      <div class="panel-body">
+        <div class="bubble thinking" id="bubble">
+          <div class="avatar">M</div>
+          <span id="bubble-text">Waiting for first snapshot...</span>
+        </div>
+      </div>
+    </div>
+    <div class="stats">
+      <span>snapshots: <b id="st-deltas">0</b></span>
+      <span>frames: <b id="st-frames">0</b></span>
+      <span>last: <b id="st-ms">-</b></span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ============================================================
+// SCENE
+// ============================================================
+const sceneEl = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight);
+sceneEl.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa8c8e8);
+scene.fog = new THREE.Fog(0xa8c8e8, 14, 70);
+
+const camera = new THREE.PerspectiveCamera(65, sceneEl.clientWidth / sceneEl.clientHeight, 0.1, 300);
+camera.position.set(0, 3, 10);
+camera.lookAt(0, 1.2, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xfff5e0, 1.0);
+sun.position.set(8, 18, 6);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x6080ff, 0.35);
+fill.position.set(-8, 6, -4);
+scene.add(fill);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshLambertMaterial({ color: 0x4e7a3c }));
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+const meshes = [ground];
+
+function addMesh(geo, color, x, y, z, rx, ry, rz) {
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color }));
+  m.position.set(x, y, z);
+  if (rx) m.rotation.x = rx;
+  if (ry) m.rotation.y = ry;
+  if (rz) m.rotation.z = rz;
+  scene.add(m); meshes.push(m); return m;
+}
+
+addMesh(new THREE.BoxGeometry(3, 3, 3), 0xd83030, -4.5, 1.5, -1);
+addMesh(new THREE.BoxGeometry(1, 1, 1), 0xff8020, 3.8, 0.5, 2);
+addMesh(new THREE.CylinderGeometry(1, 1, 4, 24), 0xe0c040, -1.0, 2.0, -4);
+const ball = addMesh(new THREE.SphereGeometry(1.1, 32, 20), 0x2050c0, 1.5, 1.1, -3);
+addMesh(new THREE.TorusGeometry(1.8, 0.35, 12, 32), 0x30a050, 0.5, 0.4, -6, Math.PI/2);
+addMesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), 0x8020c0, -3.5, 0.6, -8);
+
+function tree(x, z, s) {
+  addMesh(new THREE.CylinderGeometry(0.3*s, 0.4*s, 2*s, 12), 0x6a4020, x, 1*s, z);
+  addMesh(new THREE.ConeGeometry(1.3*s, 2.4*s, 16), 0x206030, x, 3*s, z);
+}
+tree(-8, -10, 1.0); tree(-10, -14, 1.3); tree(7, -12, 1.1); tree(9.5, -16, 1.4);
+
+addMesh(new THREE.ConeGeometry(1.5, 5, 20), 0xa040d0, 4.5, 2.5, -14);
+addMesh(new THREE.BoxGeometry(1.2, 6, 1.2), 0x909098, -5, 3, -18);
+for (let i = 0; i < 10; i++)
+  addMesh(new THREE.SphereGeometry(0.22, 12, 8), 0xf0f0f0, -6 + i*1.4, 0.3, -20 - i*1.5);
+addMesh(new THREE.SphereGeometry(0.9, 24, 16), 0xf0a0c0, -3, 8, -12);
+addMesh(new THREE.SphereGeometry(0.7, 24, 16), 0xc0a0f0, 5, 11, -22);
+
+// ============================================================
+// GRID
+// ============================================================
+const MAX_DIST = 60;
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const eyeCanvas = document.getElementById('eyeCanvas');
+const sampler = document.createElement('canvas');
+const samplerCtx = sampler.getContext('2d');
+let GRID_W = 192, GRID_H = 108;
+
+function readGrid() {
+  renderer.render(scene, camera);
+  sampler.width = GRID_W; sampler.height = GRID_H;
+  samplerCtx.drawImage(renderer.domElement, 0, 0, GRID_W, GRID_H);
+  const img = samplerCtx.getImageData(0, 0, GRID_W, GRID_H);
+  const grid = [];
+  for (let y = 0; y < GRID_H; y++) {
+    const row = [];
+    for (let x = 0; x < GRID_W; x++) {
+      ndc.x = ((x + 0.5) / GRID_W) * 2 - 1;
+      ndc.y = -(((y + 0.5) / GRID_H) * 2 - 1);
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(meshes, false);
+      let Z = 100;
+      if (hits.length > 0) Z = Math.min(99, Math.round((hits[0].distance / MAX_DIST) * 100));
+      const i = (y * GRID_W + x) * 4;
+      const r = img.data[i], g = img.data[i+1], b = img.data[i+2];
+      const hex = '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+      row.push({ Z, HEX: hex });
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+const ALPHABET = '.,:;*#@%$&abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/';
+const LEGEND_SLOTS = 64;
+
+function quantKey(c, big) {
+  const zB = Math.min(9, Math.floor(c.Z / 10));
+  const hx = c.HEX.slice(1);
+  const mask = big ? 0xE0 : 0xF0;
+  const r = parseInt(hx.slice(0,2),16) & mask;
+  const g = parseInt(hx.slice(2,4),16) & mask;
+  const b = parseInt(hx.slice(4,6),16) & mask;
+  return zB + '|' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+function buildLegendAndGrid(grid, w, h) {
+  const big = (w*h) > 80000;
+  const counts = new Map();
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const k = quantKey(grid[y][x], big);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+  const sorted = [...counts.entries()].sort((a,b) => b[1]-a[1]);
+  const top = sorted.slice(0, LEGEND_SLOTS - 1);
+  const overflow = sorted.slice(LEGEND_SLOTS - 1);
+  const charOf = new Map();
+  top.forEach(([k], i) => charOf.set(k, ALPHABET[i]));
+  const overflowMap = new Map();
+  if (overflow.length > 0) {
+    for (const [k] of overflow) {
+      const [zB, hx] = k.split('|');
+      const zN = parseInt(zB);
+      const r = parseInt(hx.slice(0,2),16);
+      const g = parseInt(hx.slice(2,4),16);
+      const b = parseInt(hx.slice(4,6),16);
+      let bestK = top[0][0], bestD = Infinity;
+      for (const [tk] of top) {
+        const [tzB, thx] = tk.split('|');
+        const tzN = parseInt(tzB);
+        const tr = parseInt(thx.slice(0,2),16);
+        const tg = parseInt(thx.slice(2,4),16);
+        const tb = parseInt(thx.slice(4,6),16);
+        const d = Math.abs(zN-tzN)*400 + (r-tr)**2 + (g-tg)**2 + (b-tb)**2;
+        if (d < bestD) { bestD = d; bestK = tk; }
+      }
+      overflowMap.set(k, charOf.get(bestK));
+    }
+  }
+  const charGrid = []; const flat = [];
+  for (let y = 0; y < h; y++) {
+    const row = [];
+    for (let x = 0; x < w; x++) {
+      const k = quantKey(grid[y][x], big);
+      const ch = charOf.get(k) || overflowMap.get(k) || ALPHABET[0];
+      row.push(ch); flat.push(ch);
+    }
+    charGrid.push(row);
+  }
+  const legendLines = [];
+  for (let i = 0; i < LEGEND_SLOTS; i++) {
+    if (i < top.length) {
+      const [k, n] = top[i];
+      const ch = charOf.get(k);
+      const [zB, hx] = k.split('|');
+      const zLo = parseInt(zB)*10, zHi = zLo + 9;
+      legendLines.push(ch + ' Z' + String(zLo).padStart(2,'0') + '-' +
+        String(zHi).padStart(2,'0') + ' #' + hx + ' n=' + String(n).padStart(7,'0'));
+    } else legendLines.push('- -- ---- ------ n=-------');
+  }
+  return { charGrid, flat, legendText: legendLines.join('\n') };
+}
+
+function diffGrid(curr, prev) {
+  if (!prev || prev.length !== curr.length) return null;
+  const changes = [];
+  for (let i = 0; i < curr.length; i++) if (curr[i] !== prev[i]) changes.push([i, curr[i]]);
+  return changes;
+}
+
+// ============================================================
+// UI
+// ============================================================
+function paintEyeView(grid) {
+  eyeCanvas.width = GRID_W; eyeCanvas.height = GRID_H;
+  const c = eyeCanvas.getContext('2d');
+  const out = c.createImageData(GRID_W, GRID_H);
+  for (let y = 0; y < GRID_H; y++)
+    for (let x = 0; x < GRID_W; x++) {
+      const hex = grid[y][x].HEX.slice(1);
+      const r = parseInt(hex.slice(0,2),16), g = parseInt(hex.slice(2,4),16), b = parseInt(hex.slice(4,6),16);
+      const i = (y*GRID_W + x) * 4;
+      out.data[i] = r; out.data[i+1] = g; out.data[i+2] = b; out.data[i+3] = 255;
+    }
+  c.putImageData(out, 0, 0);
+}
+function nowStr() { return new Date().toTimeString().slice(0,8); }
+function appendLine(html, cls) {
+  const s = document.getElementById('stream');
+  const div = document.createElement('div');
+  div.className = 'line ' + (cls || '');
+  div.innerHTML = html;
+  s.appendChild(div); s.scrollTop = s.scrollHeight;
+  while (s.children.length > 150) s.removeChild(s.firstChild);
+}
+function setBubble(text, thinking, meta) {
+  const b = document.getElementById('bubble');
+  const t = document.getElementById('bubble-text');
+  b.className = thinking ? 'bubble thinking' : 'bubble';
+  t.textContent = text;
+  const old = b.querySelector('.meta'); if (old) old.remove();
+  if (meta) {
+    const m = document.createElement('span');
+    m.className = 'meta'; m.textContent = meta;
+    b.appendChild(m);
+  }
+}
+function setStatus(t, k) {
+  const el = document.getElementById('status');
+  el.textContent = t; el.className = 'badge ' + (k || 'idle');
+}
+
+// ============================================================
+// STATE
+// ============================================================
+let sessionId = null;
+let prevFlat = null;
+let running = false;
+let framesSent = 0;
+let deltasSent = 0;
+
+// ============================================================
+// SESSION
+// ============================================================
+async function startSession() {
+  if (running) return;
+  setStatus('starting...', 'idle');
+  setBubble('Starting session...', true, '');
+
+  const grid = readGrid();
+  paintEyeView(grid);
+  const { charGrid, flat, legendText } = buildLegendAndGrid(grid, GRID_W, GRID_H);
+  prevFlat = flat;
+
+  const rows = charGrid.map(r => r.join(''));
+  const payload = { width: GRID_W, height: GRID_H, grid: rows, legend: legendText };
+
+  try {
+    const r = await fetch('/session/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const j = await r.json();
+    if (!j.session_id) throw new Error(j.error || 'no session id');
+    sessionId = j.session_id;
+    document.getElementById('sid').textContent = 'sid: ' + sessionId.slice(0,8);
+    setStatus('live', 'live');
+    document.getElementById('snap').disabled = false;
+
+    appendLine('<span class="t">' + nowStr() + '</span> ' +
+      '<span class="k">FULL</span> <span class="desc">' +
+      (GRID_W*GRID_H).toLocaleString() + ' cells</span>', 'full');
+
+    running = true;
+    setBubble('Ready. Click "Send Snapshot" to ask MEIND what it sees.', true, '');
+  } catch (e) {
+    setStatus('error', 'err');
+    setBubble('Could not start session: ' + e.message, false, '');
+  }
+}
+
+function stopSession() {
+  running = false;
+  sessionId = null;
+  document.getElementById('snap').disabled = true;
+  setStatus('stopped', 'idle');
+  setBubble('Session stopped.', true, '');
+}
+
+// ============================================================
+// SNAPSHOT
+// ============================================================
+async function sendSnapshot() {
+  if (!running || !sessionId) return;
+
+  const btn = document.getElementById('snap');
+  btn.disabled = true; btn.textContent = 'Sending...';
+
+  const grid = readGrid();
+  paintEyeView(grid);
+  framesSent++;
+  document.getElementById('st-frames').textContent = framesSent;
+
+  const { flat } = buildLegendAndGrid(grid, GRID_W, GRID_H);
+  const changes = diffGrid(flat, prevFlat);
+
+  if (!changes || changes.length === 0) {
+    appendLine('<span class="t">' + nowStr() + '</span> ' +
+      '<span class="desc">no change</span>', 'skip');
+    prevFlat = flat;
+    btn.disabled = false; btn.textContent = 'Send Snapshot';
+    return;
+  }
+
+  deltasSent++;
+  document.getElementById('st-deltas').textContent = deltasSent;
+
+  const size = changes.length;
+  let cls = 'small';
+  if (size > 1500) cls = 'large'; else if (size > 400) cls = 'medium';
+
+  appendLine('<span class="t">' + nowStr() + '</span> ' +
+    '<span class="k">' + size.toLocaleString() + ' cells</span> ' +
+    '<span class="desc">snapshot</span>', cls);
+
+  try {
+    await fetch('/session/delta', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ session_id: sessionId, changes: changes, note: 'frame ' + framesSent })
+    });
+  } catch (e) {
+    appendLine('<span style="color:#f87171">delta failed: ' + e.message + '</span>');
+  }
+  prevFlat = flat;
+
+  // Streaming LLM
+  const bubble = document.getElementById('bubble');
+  const txt = document.getElementById('bubble-text');
+  const oldMeta = bubble.querySelector('.meta'); if (oldMeta) oldMeta.remove();
+  bubble.className = 'bubble';
+  txt.textContent = '';
+  document.getElementById('countdown').textContent = 'streaming...';
+  document.getElementById('countdown').style.color = '#6ee7b7';
+
+  const t0 = performance.now();
+  let totalChars = 0;
+
+  try {
+    const resp = await fetch('/session/ask_stream', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        session_id: sessionId,
+        question: 'Describe everything you see in front of you right now. ' +
+          'List the main objects, their positions (left/center/right, near/far), ' +
+          'their colors and sizes, and any motion from recent changes. ' +
+          'Do not invent details. Be specific and detailed.'
+      })
+    });
+    if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      txt.textContent = buffer;
+      totalChars = buffer.length;
+      bubble.parentElement.scrollTop = bubble.parentElement.scrollHeight;
+    }
+    const dt = ((performance.now() - t0) / 1000).toFixed(1);
+    document.getElementById('st-ms').textContent = dt + 's';
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = 'streamed · ' + totalChars + ' chars · ' + dt + 's';
+    bubble.appendChild(meta);
+  } catch (e) {
+    txt.textContent = 'LLM error: ' + e.message;
+  }
+
+  document.getElementById('countdown').textContent = '';
+  btn.disabled = false; btn.textContent = 'Send Snapshot';
+}
+
+// ============================================================
+// CONTROLS
+// ============================================================
+document.querySelectorAll('.preset').forEach(b => {
+  b.addEventListener('click', () => {
+    GRID_W = +b.dataset.w; GRID_H = +b.dataset.h;
+    document.getElementById('gw').value = GRID_W;
+    document.getElementById('gh').value = GRID_H;
+    document.getElementById('gwv').textContent = GRID_W;
+    document.getElementById('ghv').textContent = GRID_H;
+    eyeCanvas.width = GRID_W; eyeCanvas.height = GRID_H;
+    prevFlat = null;
+  });
+});
+document.getElementById('gw').addEventListener('input', e => {
+  GRID_W = +e.target.value;
+  document.getElementById('gwv').textContent = GRID_W; prevFlat = null;
+});
+document.getElementById('gh').addEventListener('input', e => {
+  GRID_H = +e.target.value;
+  document.getElementById('ghv').textContent = GRID_H; prevFlat = null;
+});
+document.getElementById('start').addEventListener('click', startSession);
+document.getElementById('stop').addEventListener('click', stopSession);
+document.getElementById('snap').addEventListener('click', sendSnapshot);
+
+// ============================================================
+// ANIMATE
+// ============================================================
+let t = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  t += 0.015;
+  ball.position.x = 1.5 + Math.sin(t) * 2.5;
+  ball.position.z = -3 + Math.cos(t * 0.7) * 1.2;
+  renderer.render(scene, camera);
+}
+animate();
+setTimeout(() => { paintEyeView(readGrid()); }, 400);
+window.addEventListener('resize', () => {
+  renderer.setSize(sceneEl.clientWidth, sceneEl.clientHeight);
+  camera.aspect = sceneEl.clientWidth / sceneEl.clientHeight;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>
